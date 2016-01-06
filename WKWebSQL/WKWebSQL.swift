@@ -1,4 +1,4 @@
-//
+ //
 //  WKWebSQL.swift
 //
 /*
@@ -89,7 +89,7 @@ public final class WKWebSQL : NSObject {
         //print(SQL)
         dispatch_async(dispatch_get_main_queue()) {
             
-            var resultsJSON: NSString = ""
+            var resultsJSON: String = ""
             
             do {
                 let command = self.getBaseSQLCommand(SQL!)
@@ -106,7 +106,11 @@ public final class WKWebSQL : NSObject {
                     let Params = JSON(data: dataFromString!)
                     var P_Array = [Binding?]()
                     for (_,subJson):(String, JSON) in Params {
-                        P_Array.append(subJson.stringValue as Binding)
+                        if(subJson.stringValue.uppercaseString == "NULL" || subJson == nil) {
+                            P_Array.append(nil)
+                        } else {
+                            P_Array.append(subJson.stringValue as Binding)
+                        }
                     }
                     let rows = try results.run(P_Array)
                     
@@ -132,8 +136,9 @@ public final class WKWebSQL : NSObject {
                 _ = "JSON.parse('\(resultsJSON as String)')"
                 //let ResultsParsing = resultsJSON as String
                 self.doCallBack(CallBackIDString, Success: true, Results: resultsJSON as String)
-            } catch let exception {
-                self.doCallBack(CallBackIDString, Success: false, Results: "'" + (exception as! String) + "'")
+            } catch let error {
+                let nsError = error as NSError
+                self.doCallBack(CallBackIDString, Success: false, Results: "'\(nsError.localizedDescription as String)'")
             }
         }
     }
@@ -272,22 +277,52 @@ public final class WKWebSQL : NSObject {
             var i: Int = 0
             for col in row {
                 let rPrefix = "\"" + colNames[i++] + "\":"
+                Row.append(rPrefix + self.transcodeReturn(col))
+                /*
                 if((col as? String) == nil) {
                     Row.append(rPrefix + self.getColAsString(col))
                 } else {
-                    var dataString = (col as? String)!
-                    dataString = dataString.stringByReplacingOccurrencesOfString("\n\r", withString: "\\n")
-                    dataString = dataString.stringByReplacingOccurrencesOfString("\r\n", withString: "\\n")
-                    dataString = dataString.stringByReplacingOccurrencesOfString("\n", withString: "\\n")
-                    dataString = dataString.stringByReplacingOccurrencesOfString("\r", withString: "\\n")
-                    dataString = dataString.stringByReplacingOccurrencesOfString("\"", withString: "\\\"")
-                    Row.append(rPrefix + "\"" + dataString + "\"")
+                    if(col == nil) {
+                        Row.append(rPrefix + "NULL")
+                    } else {
+                        
+                        var dataString = (col as? String)!
+                        dataString = dataString.stringByReplacingOccurrencesOfString("\n\r", withString: "\\n")
+                        dataString = dataString.stringByReplacingOccurrencesOfString("\r\n", withString: "\\n")
+                        dataString = dataString.stringByReplacingOccurrencesOfString("\n", withString: "\\n")
+                        dataString = dataString.stringByReplacingOccurrencesOfString("\r", withString: "\\n")
+                        dataString = dataString.stringByReplacingOccurrencesOfString("\"", withString: "\\\"")
+                        Row.append(rPrefix + "\"" + dataString + "\"")                    }
                 }
+                */
             }
             Rows.append("{ " + Row.joinWithSeparator(",") + " } ")
         }
         let joinedRows = Rows.joinWithSeparator(",")
-        return "{ \"insertId\": null, \"rowsAffceted\": null, \"rows\": [ " + joinedRows + " ] }"
+        return "{ \"insertId\": null, \"rowsAffceted\": null, \"rows\": [ " + joinedRows + " ] }" as String
+    }
+    
+    func transcodeReturn(literal: Binding?) -> String {
+        guard let literal = literal else { return "null" }
+        
+        switch literal {
+        case let blob as Blob:
+            return blob.description
+        case let string as String:
+            var dataString = string
+            dataString = dataString.stringByReplacingOccurrencesOfString("\n\r", withString: "\\n")
+            dataString = dataString.stringByReplacingOccurrencesOfString("\r\n", withString: "\\n")
+            dataString = dataString.stringByReplacingOccurrencesOfString("\n", withString: "\\n")
+            dataString = dataString.stringByReplacingOccurrencesOfString("\r", withString: "\\n")
+            dataString = dataString.stringByReplacingOccurrencesOfString("\"", withString: "\\\"")
+            return "\"\(dataString)\""
+        case let number as Double:
+            return String(number)
+        case let integer as Int64:
+            return String(integer)
+        default:
+            return "null"
+        }
     }
     
     func nonQueryJSONResults(stmt: Statement, db: Connection) -> String {
